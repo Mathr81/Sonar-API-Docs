@@ -1,0 +1,579 @@
+openapi: 3.0.3
+info:
+  title: SteelSeries Sonar Internal API
+  description: |
+    API locale pour contrôler SteelSeries Sonar.
+    
+    **Port Dynamique :**
+    Le port change à chaque redémarrage.
+    1. Lire `C:\ProgramData\SteelSeries\GG\coreProps.json`.
+    2. Récupérer `ggEncryptedAddress`.
+    3. Appeler `https://{ggEncryptedAddress}/subApps` (ignorer SSL).
+    4. Récupérer `subApps.sonar.metadata.webServerAddress`.
+  version: 1.1.0
+servers:
+  - url: http://127.0.0.1:{port}
+    description: Serveur Local Sonar
+    variables:
+      port:
+        default: "40631"
+        description: Port dynamique actuel
+tags:
+  - name: Status
+  - name: Volume (Classic)
+  - name: Volume (Streamer)
+  - name: Devices
+  - name: Configs
+
+paths:
+  # --- STATUS ---
+  /v1/status:
+    get:
+      summary: Statut global
+      tags: [Status]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GlobalStatus'
+
+  /mode:
+    get:
+      summary: Mode actuel
+      tags: [Status]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: string
+                enum: [classic, stream]
+  
+  /mode/{mode}:
+    put:
+      summary: Changer le mode (Classic/Streamer)
+      tags: [Status]
+      parameters:
+        - in: path
+          name: mode
+          schema:
+            type: string
+            enum: [classic, stream]
+          required: true
+      responses:
+        '200':
+          description: Mode changé
+
+  # --- VOLUME CLASSIC ---
+  /volumeSettings/classic:
+    get:
+      summary: Volumes (Mode Classic)
+      tags: [Volume (Classic)]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VolumeSettingsClassic'
+
+  /volumeSettings/classic/{channel}/Volume/{value}:
+    put:
+      summary: Changer volume (Classic)
+      tags: [Volume (Classic)]
+      parameters:
+        - in: path
+          name: channel
+          schema:
+            $ref: '#/components/schemas/ChannelEnum'
+          required: true
+        - in: path
+          name: value
+          schema:
+            type: number
+            format: float
+            minimum: 0.0
+            maximum: 1.0
+          required: true
+      responses:
+        '200':
+          description: OK
+
+  /volumeSettings/classic/{channel}/Mute/{state}:
+    put:
+      summary: Mute/Unmute (Classic)
+      tags: [Volume (Classic)]
+      parameters:
+        - in: path
+          name: channel
+          schema:
+            $ref: '#/components/schemas/ChannelEnum'
+          required: true
+        - in: path
+          name: state
+          schema:
+            type: boolean
+          required: true
+      responses:
+        '200':
+          description: OK
+
+  # --- VOLUME STREAMER ---
+  /volumeSettings/streamer:
+    get:
+      summary: Volumes (Mode Streamer)
+      tags: [Volume (Streamer)]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VolumeSettingsStreamer'
+
+  /volumeSettings/streamer/{slider}/{channel}/Volume/{value}:
+    put:
+      summary: Changer volume (Streamer)
+      tags: [Volume (Streamer)]
+      parameters:
+        - in: path
+          name: slider
+          schema:
+            type: string
+            enum: [streaming, monitoring]
+          required: true
+          description: streaming = public, monitoring = ce que tu entends
+        - in: path
+          name: channel
+          schema:
+            $ref: '#/components/schemas/ChannelEnum'
+          required: true
+        - in: path
+          name: value
+          schema:
+            type: number
+            format: float
+            minimum: 0.0
+            maximum: 1.0
+          required: true
+      responses:
+        '200':
+          description: OK
+
+  /volumeSettings/streamer/{slider}/{channel}/isMuted/{state}:
+    put:
+      summary: Mute/Unmute (Streamer)
+      description: Attention, le mot clé est 'isMuted' ici, pas 'Mute'.
+      tags: [Volume (Streamer)]
+      parameters:
+        - in: path
+          name: slider
+          schema:
+            type: string
+            enum: [streaming, monitoring]
+          required: true
+        - in: path
+          name: channel
+          schema:
+            $ref: '#/components/schemas/ChannelEnum'
+          required: true
+        - in: path
+          name: state
+          schema:
+            type: boolean
+          required: true
+      responses:
+        '200':
+          description: OK
+
+  # --- CHAT MIX ---
+  /chatMix:
+    get:
+      summary: Balance ChatMix
+      tags: [Volume (Classic)]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  balance:
+                    type: number
+                  state:
+                    type: string
+    put:
+      summary: Définir ChatMix
+      tags: [Volume (Classic)]
+      parameters:
+        - in: query
+          name: balance
+          schema:
+            type: number
+            minimum: -1.0
+            maximum: 1.0
+          required: true
+      responses:
+        '200':
+          description: OK
+
+  # --- DEVICES ---
+  /audioDevices:
+    get:
+      summary: Liste des périphériques
+      tags: [Devices]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AudioDevice'
+
+  /AudioDeviceRouting:
+    get:
+      summary: Routage des applications
+      tags: [Devices]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DeviceRouting'
+
+  /AudioDeviceRouting/render/{deviceId}/{processId}:
+    put:
+      summary: Router une app vers un canal spécifique
+      tags: [Devices]
+      parameters:
+        - in: path
+          name: deviceId
+          schema:
+            type: string
+          description: L'ID du channel virtuel Sonar (ex. ID de Sonar Gaming)
+          required: true
+        - in: path
+          name: processId
+          schema:
+            type: integer
+          description: Le PID de l'application à déplacer
+          required: true
+      responses:
+        '200':
+          description: Application déplacée
+
+  /classicRedirections:
+    get:
+      summary: Redirections (Classic)
+      tags: [Devices]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RedirectionInfo'
+
+  /streamRedirections/{slider}/deviceId/{deviceId}:
+    put:
+      summary: Changer sortie (Streamer Mode)
+      tags: [Devices]
+      parameters:
+        - in: path
+          name: slider
+          schema:
+            type: string
+            enum: [streaming, monitoring]
+          required: true
+        - in: path
+          name: deviceId
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: OK
+
+  /classicRedirections/render/deviceId/{deviceId}:
+    put:
+      summary: Changer sortie (Classic Mode)
+      tags: [Devices]
+      parameters:
+        - in: path
+          name: deviceId
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: OK
+
+  # --- CONFIGS ---
+  /configs:
+    get:
+      summary: Tous les profils EQ
+      tags: [Configs]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SonarConfig'
+
+  /configs/selected:
+    get:
+      summary: Profils actifs
+      tags: [Configs]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SonarConfig'
+
+  /configs/default:
+    get:
+      summary: Config par défaut d'un canal
+      tags: [Configs]
+      parameters:
+        - in: query
+          name: virtualAudioDevice
+          schema:
+            $ref: '#/components/schemas/VirtualDeviceEnum'
+          required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfigData'
+
+components:
+  schemas:
+    ChannelEnum:
+      type: string
+      enum: [Master, game, chatRender, media, aux, chatCapture]
+
+    VirtualDeviceEnum:
+      type: string
+      enum: [game, chatRender, media, aux, chatCapture]
+
+    VolumeObject:
+      type: object
+      properties:
+        volume:
+          type: number
+          format: float
+        muted:
+          type: boolean
+
+    VolumeSettingsClassic:
+      type: object
+      properties:
+        masters:
+          type: object
+          properties:
+            classic:
+              $ref: '#/components/schemas/VolumeObject'
+        devices:
+          type: object
+          properties:
+            game:
+              type: object
+              properties:
+                classic:
+                  $ref: '#/components/schemas/VolumeObject'
+            chatRender:
+              type: object
+              properties:
+                classic:
+                  $ref: '#/components/schemas/VolumeObject'
+            media:
+              type: object
+              properties:
+                classic:
+                  $ref: '#/components/schemas/VolumeObject'
+            aux:
+              type: object
+              properties:
+                classic:
+                  $ref: '#/components/schemas/VolumeObject'
+            chatCapture:
+              type: object
+              properties:
+                classic:
+                  $ref: '#/components/schemas/VolumeObject'
+
+    VolumeSettingsStreamer:
+      type: object
+      properties:
+        masters:
+          type: object
+          properties:
+            stream:
+              type: object
+              properties:
+                streaming:
+                  $ref: '#/components/schemas/VolumeObject'
+                monitoring:
+                  $ref: '#/components/schemas/VolumeObject'
+        devices:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              stream:
+                type: object
+                properties:
+                  streaming:
+                    $ref: '#/components/schemas/VolumeObject'
+                  monitoring:
+                    $ref: '#/components/schemas/VolumeObject'
+
+    AudioDevice:
+      type: object
+      properties:
+        id:
+          type: string
+        friendlyName:
+          type: string
+        role:
+          type: string
+        dataFlow:
+          type: string
+          enum: [render, capture]
+        isVad:
+          type: boolean
+
+    DeviceRouting:
+      type: object
+      properties:
+        deviceId:
+          type: string
+        role:
+          type: string
+        audioSessions:
+          type: array
+          items:
+            type: object
+            properties:
+              processName:
+                type: string
+              displayName:
+                type: string
+              processId:
+                type: integer
+    
+    RedirectionInfo:
+      type: object
+      properties:
+        id:
+          type: string
+        deviceId:
+          type: string
+        isRunning:
+          type: boolean
+
+    GlobalStatus:
+      type: object
+      properties:
+        isEnabled:
+          type: boolean
+        mode:
+          type: string
+        devices:
+          type: array
+          items:
+            type: object
+            properties:
+              virtualAudioDevice:
+                $ref: '#/components/schemas/VirtualDeviceEnum'
+              config:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+
+    SonarConfig:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        virtualAudioDevice:
+          $ref: '#/components/schemas/VirtualDeviceEnum'
+        isPreset:
+          type: boolean
+        data:
+          $ref: '#/components/schemas/ConfigData'
+
+    ConfigData:
+      type: object
+      properties:
+        bassBoostState:
+          $ref: '#/components/schemas/EffectState'
+        trebleBoostState:
+          $ref: '#/components/schemas/EffectState'
+        voiceClarityState:
+          $ref: '#/components/schemas/EffectState'
+        smartVolume:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+            volumeLevel:
+              type: number
+        parametricEQ:
+          type: object
+          properties:
+            enabled:
+              type: boolean
+            filter1:
+              $ref: '#/components/schemas/EqFilter'
+            filter2:
+              $ref: '#/components/schemas/EqFilter'
+            # Les autres filtres suivent le meme schema
+        
+    EffectState:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        value:
+          type: number
+
+    EqFilter:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        qFactor:
+          type: number
+        frequency:
+          type: number
+        gain:
+          type: number
+        type:
+          type: string
+          enum: [peakingEQ, lowShelving, highShelving, highPass, lowPass]
